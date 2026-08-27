@@ -2,6 +2,7 @@
 #include "app_bsp.h"
 #include "FreeAct.h"
 #include "esp_log.h"
+#include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -44,11 +45,11 @@ void app_main()
     ESP_LOGI(TAG, "Blinky application");
     print_memory_info();
 
-    AppBSP_init();
-    AppBSPButton_set_handler(handle_button_click);
-
     app_wifi_init(WIFI_SSID, WIFI_PWD, on_connected, NULL);
     app_wifi_connect();
+
+    AppBSP_init();
+    AppBSPButton_set_handler(handle_button_click);
 
     Blinky_ctor(&blinky);
     Active_start(&blinky.super,
