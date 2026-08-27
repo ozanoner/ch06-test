@@ -1,14 +1,11 @@
 
 #include "app_bsp.h"
+#include "app_ota.h"
 #include "FreeAct.h"
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
-#include "esp_https_ota.h"
-#include "esp_app_desc.h"
-#include "esp_crt_bundle.h"
 #include "esp_system.h"
-#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "devops_easy_connect.h"
@@ -111,56 +108,21 @@ static void run_ota_check(void *arg)
 {
     ESP_LOGI(TAG, "WiFi connected, running OTA check...");
 
-    esp_http_client_config_t http_config = {
-        .url = "https://github.com/ozanoner/embedded-devops-ch04/releases/latest/download/blinky.bin",
-        .crt_bundle_attach = esp_crt_bundle_attach,
-        .buffer_size = 16384,
-        .buffer_size_tx = 16384,
-    };
-    esp_https_ota_config_t ota_config = {.http_config = &http_config};
-    esp_https_ota_handle_t ota_handle;
-    esp_app_desc_t new_app_info;
-
-    esp_err_t err = esp_https_ota_begin(&ota_config, &ota_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
-        vTaskDelete(NULL);
-        return;
+    bool update_available = AppOTA_check_for_update();
+    if (update_available)
+    {
+        esp_err_t err = AppOTA_perform_update();
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "OTA update failed: %s", esp_err_to_name(err));
+        }
+        else
+        {
+            ESP_LOGI(TAG, "OTA update complete, restarting");
+            esp_restart();
+        }
     }
 
-    err = esp_https_ota_get_img_desc(ota_handle, &new_app_info);
-    if (err != ESP_OK) {
-        esp_https_ota_abort(ota_handle);
-        ESP_LOGE(TAG, "OTA version check failed: %s", esp_err_to_name(err));
-        vTaskDelete(NULL);
-        return;
-    }
-
-    if (strcmp(new_app_info.version, esp_app_get_description()->version) == 0) {
-        esp_https_ota_abort(ota_handle);
-        ESP_LOGI(TAG, "Firmware is already up to date");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    while ((err = esp_https_ota_perform(ota_handle)) == ESP_ERR_HTTPS_OTA_IN_PROGRESS)
-        ;
-    if (err != ESP_OK) {
-        esp_https_ota_abort(ota_handle);
-        ESP_LOGE(TAG, "OTA update failed: %s", esp_err_to_name(err));
-        vTaskDelete(NULL);
-        return;
-    }
-
-    err = esp_https_ota_finish(ota_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "OTA finish failed: %s", esp_err_to_name(err));
-        vTaskDelete(NULL);
-        return;
-    }
-
-    ESP_LOGI(TAG, "OTA update complete, restarting");
-    esp_restart();
     vTaskDelete(NULL);
 }
 
