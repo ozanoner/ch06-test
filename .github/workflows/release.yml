@@ -38,7 +38,6 @@ jobs:
           body: ${{ steps.cliff.outputs.content }}
           files: |
             blinky/build/blinky.bin
-            blinky/version.txt
             blinky/build/bootloader/bootloader.bin
             blinky/build/partition_table/partition-table.bin
             blinky/build/flasher_args.json
