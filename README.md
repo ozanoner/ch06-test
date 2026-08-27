@@ -19,3 +19,35 @@
 - Add blinky/partitions.txt and blinky/sdkconfig.defaults
 
 
+## Tags & releases
+
+Remove existing tags and tag the current version
+
+```bash
+git tag -l # list
+git tag -d v0.1.0 # delete
+git tag -a v0.1.0 -m "Release version 0.1.0" # create a tag
+git push origin v0.1.0 # push remote
+```
+
+## updating to a new version
+1. update version.txt
+2. update code
+3. build and verify
+```
+esptool.py --chip esp32 image_info build/blinky.bin
+
+Application Information
+=======================
+Project name: blinky
+App version: 0.1.1
+Compile time: Aug 27 2026 16:34:00
+ELF file SHA256: f71d4cc5c5157c29453f0f75b36f27d3925f3ebe144b35546b9d70906e501519
+ESP-IDF: v6.0
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 0.99
+MMU page size: 64 KB
+Secure version: 0
+```
+
+4. commit, tag, and push

@@ -72,7 +72,7 @@ static void Blinky_ctor(Blinky *const me)
 
 static void Blinky_dispatch(Blinky *const me, Event const *const e)
 {
-    ESP_LOGI(TAG, "Blinky_dispatch: sig=%d", e->sig);
+    // ESP_LOGI(TAG, "Blinky_dispatch: sig=%d", e->sig);
 
     switch (e->sig)
     {
@@ -98,7 +98,7 @@ static void Blinky_dispatch(Blinky *const me, Event const *const e)
 
 static void handle_button_click()
 {
-    ESP_LOGI(TAG, "Button clicked!");
+    // ESP_LOGI(TAG, "Button clicked!");
 
     static Event e = {.sig = BUTTON_CLICKED_SIG};
     Active_post((Active *)&blinky.super, (Event *)&e);
