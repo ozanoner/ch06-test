@@ -7,24 +7,28 @@
 
 #include "app_ota.h"
 
+#define TAG "app_ota"
+#define APP_OTA_FIRMWARE_URL "https://github.com/ozanoner/ch06-test/releases/latest/download/blinky.bin"
+#define APP_OTA_HTTP_BUFFER_SIZE 16384
+
 static esp_https_ota_handle_t ota_handle;
 static bool ota_update_available;
 
 bool AppOTA_check_for_update()
 {
-	esp_http_client_config_t http_config = {
-		.url = "https://github.com/ozanoner/embedded-devops-ch04/releases/latest/download/blinky.bin",
+	static esp_http_client_config_t http_config = {
+		.url = APP_OTA_FIRMWARE_URL,
 		.crt_bundle_attach = esp_crt_bundle_attach,
-		.buffer_size = 16384,
-		.buffer_size_tx = 16384,
+		.buffer_size = APP_OTA_HTTP_BUFFER_SIZE,
+		.buffer_size_tx = APP_OTA_HTTP_BUFFER_SIZE,
 	};
-	esp_https_ota_config_t ota_config = {.http_config = &http_config};
+	static esp_https_ota_config_t ota_config = {.http_config = &http_config};
 	esp_app_desc_t new_app_info;
 
 	esp_err_t err = esp_https_ota_begin(&ota_config, &ota_handle);
 	if (err != ESP_OK)
 	{
-		ESP_LOGE("app_ota", "OTA begin failed: %s", esp_err_to_name(err));
+		ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
 		return false;
 	}
 
@@ -32,19 +36,19 @@ bool AppOTA_check_for_update()
 	if (err != ESP_OK)
 	{
 		esp_https_ota_abort(ota_handle);
-		ESP_LOGE("app_ota", "OTA version check failed: %s", esp_err_to_name(err));
+		ESP_LOGE(TAG, "OTA version check failed: %s", esp_err_to_name(err));
 		return false;
 	}
 
 	if (strcmp(new_app_info.version, esp_app_get_description()->version) == 0)
 	{
 		esp_https_ota_abort(ota_handle);
-		ESP_LOGI("app_ota", "Firmware is already up to date");
+		ESP_LOGI(TAG, "Firmware is already up to date");
 		return false;
 	}
 
 	ota_update_available = true;
-	ESP_LOGI("app_ota", "Firmware update available: %s", new_app_info.version);
+	ESP_LOGI(TAG, "Firmware update available: %s", new_app_info.version);
 	return true;
 }
 
