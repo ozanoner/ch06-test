@@ -3,6 +3,9 @@
 #include "FreeAct.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "devops_easy_connect.h"
 
 #define TAG "app"
 
@@ -22,10 +25,13 @@ typedef enum
 static Blinky blinky;
 static StackType_t blinky_stack[configMINIMAL_STACK_SIZE * 2];
 static Event *blinky_queue[10];
+static StaticTask_t ota_task_buf;
+static StackType_t ota_task_stack[4096];
 
 static void Blinky_ctor(Blinky *const me);
 static void Blinky_dispatch(Blinky *const me, Event const *const e);
 static void handle_button_click();
+static void on_connected(void *arg);
 
 static void print_memory_info()
 {
@@ -40,6 +46,9 @@ void app_main()
 
     AppBSP_init();
     AppBSPButton_set_handler(handle_button_click);
+
+    app_wifi_init(WIFI_SSID, WIFI_PWD, on_connected, NULL);
+    app_wifi_connect();
 
     Blinky_ctor(&blinky);
     Active_start(&blinky.super,
@@ -90,4 +99,28 @@ static void handle_button_click()
 
     static Event e = {.sig = BUTTON_CLICKED_SIG};
     Active_post((Active *)&blinky.super, (Event *)&e);
+}
+
+static void run_ota_check(void *arg)
+{
+    ESP_LOGI(TAG, "WiFi connected, running OTA check...");
+
+    vTaskDelete(NULL);
+}
+
+static void on_connected(void *arg)
+{
+    TaskHandle_t created = xTaskCreateStatic(
+        run_ota_check,
+        "ota_check",
+        4096,
+        NULL,
+        5,
+        ota_task_stack,
+        &ota_task_buf);
+
+    if (created == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create OTA check task");
+    }
 }

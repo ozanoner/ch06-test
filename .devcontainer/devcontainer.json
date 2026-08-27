@@ -3,8 +3,8 @@
     "build": {
         "dockerfile": "Dockerfile"
     },
-    "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/devops-embedded-04,type=bind",
-    "workspaceFolder": "/workspaces/devops-embedded-04",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/,type=bind",
+    "workspaceFolder": "/workspace/",
     "postStartCommand": "git config --global --add safe.directory '*'",
     "mounts": [
         "source=extensionCache,target=/root/.vscode-server/extensions,type=volume"

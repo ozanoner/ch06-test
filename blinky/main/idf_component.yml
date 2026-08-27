@@ -17,3 +17,7 @@ dependencies:
   ozanoner/freeact-esp32: ^0.1.0
   espressif/led_strip: ^3.0.1~1
   espressif/button: ^4.1.4
+
+  ozanoner/devops_easy_connect:
+    git: https://github.com/ozanoner/devops_easy_connect.git
+    version: v1.0.1
