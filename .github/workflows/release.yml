@@ -26,6 +26,9 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           push: never
+          env: |
+            WIFI_SSID=${{ secrets.WIFI_SSID }}
+            WIFI_PWD=${{ secrets.WIFI_PWD }}
           runCmd: |
             idf.py -C blinky build
       - name: Publish release
