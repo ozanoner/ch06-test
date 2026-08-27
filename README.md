@@ -28,6 +28,8 @@ git tag -l # list
 git tag -d v0.1.0 # delete
 git tag -a v0.1.0 -m "Release version 0.1.0" # create a tag
 git push origin v0.1.0 # push remote
+
+git push origin --tags
 ```
 
 ## updating to a new version

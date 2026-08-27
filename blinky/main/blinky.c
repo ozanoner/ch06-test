@@ -34,6 +34,7 @@ static StackType_t ota_task_stack[8192];
 static void Blinky_ctor(Blinky *const me);
 static void Blinky_dispatch(Blinky *const me, Event const *const e);
 static void handle_button_click();
+static bool run_diagnostics(void);
 static void on_connected(void *arg);
 
 static void print_memory_info()
@@ -48,10 +49,12 @@ void app_main()
     print_memory_info();
 
     app_wifi_init(WIFI_SSID, WIFI_PWD, on_connected, NULL);
-    app_wifi_connect();
-
     AppBSP_init();
     AppBSPButton_set_handler(handle_button_click);
+
+    AppOTA_validate_running_app(run_diagnostics);
+
+    app_wifi_connect();
 
     Blinky_ctor(&blinky);
     Active_start(&blinky.super,
@@ -102,6 +105,11 @@ static void handle_button_click()
 
     static Event e = {.sig = BUTTON_CLICKED_SIG};
     Active_post((Active *)&blinky.super, (Event *)&e);
+}
+
+static bool run_diagnostics(void)
+{
+    return true;
 }
 
 static void run_ota_check(void *arg)
