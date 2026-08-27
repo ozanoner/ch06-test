@@ -109,7 +109,7 @@ static void handle_button_click()
 
 static bool run_diagnostics(void)
 {
-    return true;
+    return false;
 }
 
 static void run_ota_check(void *arg)
