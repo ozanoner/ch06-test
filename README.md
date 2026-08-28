@@ -105,13 +105,12 @@ espsecure verify-signature --version 2 \
 ```
 
 
-Flash the signed bootloader, partition table, and application together when
-enabling this configuration on a device:
-
-```bash
-idf.py -p /dev/ttyUSB0 flash
-```
-
 The same signing key must be available to release builds. Do not commit the
 private key or expose it in workflow logs. A release build that cannot read
 `../keys/signing_key.pem` will fail intentionally.
+
+For GitHub releases, add a repository Actions secret named `SIGNING_KEY` with
+the complete contents of the RSA-3072 PEM file, including the `BEGIN` and `END`
+lines. The release workflow writes this secret to `keys/signing_key.pem`, then
+signs `build/blinky-unsigned.bin` with Secure Boot version 2 before publishing
+`build/blinky.bin`.

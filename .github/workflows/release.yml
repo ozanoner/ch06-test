@@ -22,6 +22,13 @@ jobs:
           args: --latest --strip header
         env:
           GITHUB_REPO: ${{ github.repository }}
+      - name: Restore signing key
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          mkdir -p keys
+          printf '%s' "$SIGNING_KEY" > keys/signing_key.pem
+          chmod 600 keys/signing_key.pem
       - name: Build firmware
         uses: devcontainers/ci@v0.3
         with:
