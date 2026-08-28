@@ -29,7 +29,7 @@ git tag -d v0.1.0 # delete
 git tag -a v0.1.0 -m "Release version 0.1.0" # create a tag
 git push origin v0.1.0 # push remote
 
-git push origin --tags
+git push && git push --tags
 ```
 
 ## updating to a new version
@@ -53,3 +53,6 @@ Secure version: 0
 ```
 
 4. commit, tag, and push
+
+
+## signing
