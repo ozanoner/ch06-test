@@ -65,15 +65,33 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: firmware-unsigned
-      - name: Install signing tools (esptool + jq)
+      # jq from the distro package (requires root on the runner). esptool
+      # (provides espsecure) is installed via uv — a single static binary that
+      # manages its own Python, so we don't depend on system pip and get the
+      # esptool 5.x that apt does not provide.
+      - name: Install signing tools (jq + esptool)
         run: |
           set -euo pipefail
-          command -v jq >/dev/null 2>&1 \
-            || { apt-get update -y && apt-get install -y jq; }
-          python3 -m pip install --quiet --user esptool \
-            || python3 -m pip install --quiet --user --break-system-packages esptool
           export PATH="$HOME/.local/bin:$PATH"
+          mkdir -p "$HOME/.local/bin"
+
+          # jq: native package
+          if ! command -v jq >/dev/null 2>&1; then
+            apt-get update -y
+            apt-get install -y jq
+          fi
+
+          # espsecure (esptool): via uv
+          if ! command -v espsecure >/dev/null 2>&1; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="$HOME/.local/bin:$PATH"
+            uv tool install --quiet esptool
+            export PATH="$HOME/.local/bin:$PATH"
+          fi
+
+          command -v jq
           command -v espsecure
+          espsecure --help >/dev/null 2>&1
       - name: Sign via local SignServer
         run: |
           set -euo pipefail
