@@ -96,11 +96,15 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$HOME/.local/bin:$PATH"
-          cd blinky
+          # upload-artifact uses the least common ancestor of the paths as the
+          # artifact root, so the download restores the files at the workspace
+          # root (blinky.bin, bootloader/, partition_table/, flasher_args.json).
+          ls -la
+          ls -la bootloader partition_table
 
-          # 1. Hash the unsigned app (build/blinky.bin) for SignServer
-          openssl dgst -sha256 -binary build/blinky.bin | base64 -w0 \
-            > build/blinky.sha256.b64
+          # 1. Hash the unsigned app (blinky.bin) for SignServer
+          openssl dgst -sha256 -binary blinky.bin | base64 -w0 \
+            > blinky.sha256.b64
 
           # 2. Ask the local SignServer for the signature (mTLS; server cert
           #    is self-signed, hence -k). Only the hash crosses the network.
@@ -110,38 +114,39 @@ jobs:
             -H 'X-Keyfactor-Requested-With: REST' \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/json' \
-            --data "{\"data\":\"$(cat build/blinky.sha256.b64)\",\"encoding\":\"BASE64\",\"metaData\":{\"USING_CLIENTSUPPLIED_HASH\":\"true\",\"CLIENTSIDE_HASHDIGESTALGORITHM\":\"SHA-256\"}}" \
+            --data "{\"data\":\"$(cat blinky.sha256.b64)\",\"encoding\":\"BASE64\",\"metaData\":{\"USING_CLIENTSUPPLIED_HASH\":\"true\",\"CLIENTSIDE_HASHDIGESTALGORITHM\":\"SHA-256\"}}" \
             'https://signserver:8443/signserver/rest/v1/workers/PlainSigner/process' \
-            > build/signserver-response.json
+            > signserver-response.json
 
           # 3. Extract the signer certificate -> public key, and the signature
-          jq -r .signerCertificate build/signserver-response.json \
-            | base64 -d > build/signer-certificate.der
-          openssl x509 -inform DER -in build/signer-certificate.der \
-            -pubkey -noout > build/signing_public.pem
-          jq -r .data build/signserver-response.json \
-            | base64 -d > build/signature.bin
+          jq -r .signerCertificate signserver-response.json \
+            | base64 -d > signer-certificate.der
+          openssl x509 -inform DER -in signer-certificate.der \
+            -pubkey -noout > signing_public.pem
+          jq -r .data signserver-response.json \
+            | base64 -d > signature.bin
 
           # 4. Assemble the Secure Boot v2 signature block over the app
           espsecure sign-data --version 2 \
-            --pub-key build/signing_public.pem \
-            --signature build/signature.bin \
-            --output build/blinky.signed.bin \
-            build/blinky.bin
+            --pub-key signing_public.pem \
+            --signature signature.bin \
+            --output blinky.signed.bin \
+            blinky.bin
 
-          # 5. The published/flashed app is the signed one
-          mv build/blinky.signed.bin build/blinky.bin
+          # 5. The published/flashed app is the signed one (flasher_args.json
+          #    points at blinky.bin, so keep that name)
+          mv blinky.signed.bin blinky.bin
 
           # 6. Verify before publishing
           espsecure verify-signature --version 2 \
-            --keyfile build/signing_public.pem build/blinky.bin
+            --keyfile signing_public.pem blinky.bin
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
           name: "Blinky Firmware ${{ github.ref_name }}"
           body: ${{ needs.build.outputs.release_body }}
           files: |
-            blinky/build/blinky.bin
-            blinky/build/bootloader/bootloader.bin
-            blinky/build/partition_table/partition-table.bin
-            blinky/build/flasher_args.json
+            blinky.bin
+            bootloader/bootloader.bin
+            partition_table/partition-table.bin
+            flasher_args.json
