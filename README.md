@@ -143,6 +143,34 @@ these files exist one directory above it:
 The private signing key remains in SignServer. The public key is extracted from
 the signer certificate returned by SignServer below.
 
+### How remote signing works
+
+SignServer is a generic PKI signer, not an ESP-IDF tool. Its `PlainSigner`
+worker only performs the raw RSA private-key operation over a digest
+(`NONEwithRSAandMGF1`); it has no knowledge of the ESP32 Secure Boot v2 image
+format. A valid signed image is not "binary + appended signature" but a
+specific structure — the *signature block* (padding, key digest, signature) —
+that only `espsecure` knows how to assemble. So the work is split:
+
+```text
+build machine                                      SignServer (holds the key)
+------------                                      ---------------------------
+unsigned app image  --(SHA-256 hash only)------->  signs the digest, returns:
+                                                        * RSA signature
+                                                        * signer certificate
+espsecure sign-data <-- pub key (from certificate) <-
+   assembles the signature block into the image
+signed app image
+```
+
+Because the worker sets `CLIENTSIDEHASHING=true`, **only the SHA-256 hash of
+the image crosses the network** — the firmware binary itself never leaves the
+build machine, and the private key never leaves SignServer. Both halves are
+required: SignServer supplies the cryptographic signature, and `espsecure
+sign-data` turns it into a complete signed ESP32 image using the public key
+derived from the returned signer certificate. SignServer therefore returns a
+*signature*, not a signed binary.
+
 1. Remove the temporary ESP-IDF configuration so the defaults are applied:
 
 ```bash
@@ -227,6 +255,44 @@ Never commit the mTLS private key, the SignServer private key, or the files in
 `build/`. The `localhost:8444` URL works because the devcontainer uses host
 networking. A runner on the Compose network must instead use
 `https://signserver:8443/signserver/rest/v1/workers/PlainSigner/process`.
+
+## Release workflow (GitHub Actions)
+
+The release workflow (`.github/workflows/release.yml`) is split into two jobs
+so the ESP-IDF toolchain stays on GitHub-hosted runners and the self-hosted
+runner only does the signing:
+
+```text
+build job  (ubuntu-latest, GitHub-hosted)
+  devcontainers/ci -> idf.py build      (ESP-IDF devcontainer, normal Docker)
+  upload-artifact "firmware-unsigned":
+      blinky.bin, bootloader.bin, partition-table.bin, flasher_args.json
+        |
+        v  (download-artifact)
+sign job  (self-hosted, labels: self-hosted,linux,local)
+  install esptool + jq                  (NOT the full ESP-IDF toolchain)
+  hash blinky.bin -> POST to https://signserver:8443/.../PlainSigner/process
+                     using the mTLS client cert/key mounted at /home/runner/keys
+  espsecure sign-data --version 2  ->  signed blinky.bin
+  espsecure verify-signature
+  publish release (signed blinky.bin + bootloader + partition table + flasher_args.json)
+```
+
+Why this split:
+
+- The build job runs on a GitHub-hosted runner, so the ESP-IDF devcontainer is
+  built there with ordinary Docker — there is no Docker-in-Docker on the
+  self-hosted runner.
+- The self-hosted runner only needs a small toolset (`esptool` for `espsecure`
+  plus `jq`/`curl`/`openssl`), not the full ESP-IDF. It must run on the same
+  Docker network as SignServer and have the mTLS client cert/key mounted
+  read-only at `/home/runner/keys/` by the host compose file.
+- Only the SHA-256 hash of the app crosses the network to SignServer. The
+  private signing key never leaves SignServer, so there is no `SIGNING_KEY`
+  secret.
+- The release is published by the sign job with the **signed** `blinky.bin`
+  (plus bootloader, partition table, and `flasher_args.json`), so the
+  published app is exactly what gets flashed.
 
 ## Verified SignServer setup (working end to end)
 

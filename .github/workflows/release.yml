@@ -3,11 +3,18 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
-  release:
+  # Build on a GitHub-hosted runner: the firmware is compiled inside the
+  # ESP-IDF devcontainer (standard Docker on the hosted runner — no
+  # Docker-in-Docker needed on our self-hosted runner). This job has no access
+  # to SignServer and produces the unsigned binaries as an artifact.
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      release_body: ${{ steps.cliff.outputs.content }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,13 +29,6 @@ jobs:
           args: --latest --strip header
         env:
           GITHUB_REPO: ${{ github.repository }}
-      - name: Restore signing key
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        run: |
-          mkdir -p keys
-          printf '%s' "$SIGNING_KEY" > keys/signing_key.pem
-          chmod 600 keys/signing_key.pem
       - name: Build firmware
         uses: devcontainers/ci@v0.3
         with:
@@ -38,11 +38,90 @@ jobs:
             WIFI_PWD=${{ secrets.WIFI_PWD }}
           runCmd: |
             idf.py -C blinky build
+      - name: Upload unsigned firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-unsigned
+          if-no-files-found: error
+          path: |
+            blinky/build/blinky.bin
+            blinky/build/bootloader/bootloader.bin
+            blinky/build/partition_table/partition-table.bin
+            blinky/build/flasher_args.json
+
+  # Sign on the self-hosted runner next to the local SignServer. The mTLS
+  # client cert/key are mounted read-only at /home/runner/keys by the host
+  # compose file. This job only needs a small toolset (esptool for espsecure,
+  # plus jq) — NOT the full ESP-IDF toolchain. The signing private key never
+  # leaves SignServer; there is no SIGNING_KEY secret anymore.
+  sign:
+    needs: build
+    runs-on: [self-hosted, linux, local]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download unsigned firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-unsigned
+      - name: Install signing tools (esptool + jq)
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null 2>&1 \
+            || { apt-get update -y && apt-get install -y jq; }
+          python3 -m pip install --quiet --user esptool \
+            || python3 -m pip install --quiet --user --break-system-packages esptool
+          export PATH="$HOME/.local/bin:$PATH"
+          command -v espsecure
+      - name: Sign via local SignServer
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          cd blinky
+
+          # 1. Hash the unsigned app (build/blinky.bin) for SignServer
+          openssl dgst -sha256 -binary build/blinky.bin | base64 -w0 \
+            > build/blinky.sha256.b64
+
+          # 2. Ask the local SignServer for the signature (mTLS; server cert
+          #    is self-signed, hence -k). Only the hash crosses the network.
+          curl --fail-with-body --silent --show-error -k \
+            --cert /home/runner/keys/client.crt \
+            --key /home/runner/keys/client.key \
+            -H 'X-Keyfactor-Requested-With: REST' \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json' \
+            --data "{\"data\":\"$(cat build/blinky.sha256.b64)\",\"encoding\":\"BASE64\",\"metaData\":{\"USING_CLIENTSUPPLIED_HASH\":\"true\",\"CLIENTSIDE_HASHDIGESTALGORITHM\":\"SHA-256\"}}" \
+            'https://signserver:8443/signserver/rest/v1/workers/PlainSigner/process' \
+            > build/signserver-response.json
+
+          # 3. Extract the signer certificate -> public key, and the signature
+          jq -r .signerCertificate build/signserver-response.json \
+            | base64 -d > build/signer-certificate.der
+          openssl x509 -inform DER -in build/signer-certificate.der \
+            -pubkey -noout > build/signing_public.pem
+          jq -r .data build/signserver-response.json \
+            | base64 -d > build/signature.bin
+
+          # 4. Assemble the Secure Boot v2 signature block over the app
+          espsecure sign-data --version 2 \
+            --pub-key build/signing_public.pem \
+            --signature build/signature.bin \
+            --output build/blinky.signed.bin \
+            build/blinky.bin
+
+          # 5. The published/flashed app is the signed one
+          mv build/blinky.signed.bin build/blinky.bin
+
+          # 6. Verify before publishing
+          espsecure verify-signature --version 2 \
+            --keyfile build/signing_public.pem build/blinky.bin
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
           name: "Blinky Firmware ${{ github.ref_name }}"
-          body: ${{ steps.cliff.outputs.content }}
+          body: ${{ needs.build.outputs.release_body }}
           files: |
             blinky/build/blinky.bin
             blinky/build/bootloader/bootloader.bin
